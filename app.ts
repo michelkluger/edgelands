@@ -1,9 +1,9 @@
-// Runs fullscreen on the projector (Windows "Duplicate" display). Keys: C calibrate, V verify, E map edges, G play, L camera latency, Esc back.
-import { SKIP, bitsFor, decode, fillHoles, lit } from "./calibrate";
+// Runs fullscreen on the projector (Windows "Duplicate" display). Keys: C calibrate, V verify, E map edges, G play, H Haiku level, Esc back.
+import { SKIP, bitsFor, decode, fillHoles, lit, switchTime } from "./calibrate";
 import { beamOutside, edgeTiles, fromMap, toMap, type Level } from "./edges";
 import { createGame, seeded, type GameEvent } from "./game";
 
-type Calib = { proj: [number, number]; cam: [number, number]; decoded: number; lit: number };
+type Calib = { proj: [number, number]; cam: [number, number]; decoded: number; lit: number; latency?: number }; // latency: ms, projector → camera
 
 const canvas = document.querySelector("canvas")!;
 const ctx = canvas.getContext("2d")!;
@@ -20,7 +20,8 @@ let msg = "";
 let track: MediaStreamTrack;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const nextFrame = () => new Promise<void>((r) => video.requestVideoFrameCallback(() => r()));
+// next camera frame, or give up after 500 ms: a camera that stops delivering frames must not freeze C or E forever
+const nextFrame = () => new Promise<void>((r) => (video.requestVideoFrameCallback(() => r()), setTimeout(r, 500)));
 const fill = (c: string) => ((ctx.fillStyle = c), ctx.fillRect(0, 0, canvas.width, canvas.height));
 
 function resize() {
@@ -35,10 +36,11 @@ function screen() {
   const size = Math.round(canvas.height / 28);
   ctx.font = `${size}px sans-serif`;
   const lines = [
-    "C calibrate (room light off) · V verify · E map edges · H Haiku designs the level · G play · L camera latency · Esc back",
+    "C calibrate (room light off) · V verify · E map edges · H Haiku designs the level · G play · Esc back",
     "In game: R restart same level · Enter next round · 2 two players · H Haiku redesign · M mute",
     calib
-      ? `Calibrated ${calib.proj.join("×")}: ${Math.round((100 * calib.decoded) / calib.lit)}% of the lit area mapped`
+      ? `Calibrated ${calib.proj.join("×")}: ${Math.round((100 * calib.decoded) / calib.lit)}% of the lit area mapped` +
+        (calib.latency ? ` · camera latency ≈ ${calib.latency} ms` : "")
       : "Not calibrated yet",
     level ? `Edge map: ${level.solid.reduce((a, b) => a + b, 0)} tiles` : "No edge map yet (E)",
     msg,
@@ -69,12 +71,26 @@ function grayFrame(channel: "lum" | "red", w = video.videoWidth, h = video.video
   return g;
 }
 
-/** Project something, wait until the camera has really seen it, return a grayscale frame. */
-async function shoot(draw: () => void) {
+/**
+ * Project something, wait until the camera has really seen it, return a grayscale frame.
+ * With `lag`, also time how long the change takes to reach the camera (projector + camera + browser): sample small frames
+ * during the wait and record when the frame has moved halfway from the old picture to the new one. C's stripe switches
+ * give ~36 such samples for free, with no extra flashing.
+ */
+async function shoot(draw: () => void, lag?: number[]) {
+  const before = lag && grayFrame("lum", 160, 90);
   draw();
-  await sleep(250);
+  const t0 = performance.now(), seen: [number, Uint8Array][] = [];
+  // 450 ms per picture: C's stripes change about twice a second, under the 3-per-second photosensitivity limit
+  while (performance.now() - t0 < 450) {
+    if (!before) { await sleep(450); break; }
+    await nextFrame();
+    seen.push([performance.now() - t0, grayFrame("lum", 160, 90)]);
+  }
   await nextFrame();
   await nextFrame();
+  const t = before ? switchTime(before, seen) : undefined;
+  if (t !== undefined) lag!.push(t);
   return grayFrame("lum");
 }
 
@@ -115,12 +131,20 @@ async function lightUp() {
 async function calibrate() {
   if (!track) return ((msg = "No camera: calibration needs the webcam"), screen());
   mode = "busy";
+  await fullscreen();
+  fill("#000");
+  ctx.fillStyle = "#ccc";
+  ctx.font = `${Math.round(canvas.height / 26)}px sans-serif`;
+  ctx.fillText("Calibrating: black-and-white stripes for about 20 s, changing twice a second.", canvas.height / 20, canvas.height * 0.4);
+  ctx.fillText("If you are sensitive to flashing light, look away now. Starting in 3 s…", canvas.height / 20, canvas.height * 0.4 + canvas.height / 16);
+  await sleep(3000);
   const lockMsg = await lightUp();
+  const lag: number[] = [];
   const black = await shoot(() => fill("#000"));
   const white = await shoot(() => fill("#fff"));
   const pairs = async (vertical: boolean) => {
     const bits = bitsFor(vertical ? canvas.width : canvas.height), out: [Uint8Array, Uint8Array][] = [];
-    for (let k = 0; k < bits; k++) out.push([await shoot(() => stripes(vertical, k, bits, false)), await shoot(() => stripes(vertical, k, bits, true))]);
+    for (let k = 0; k < bits; k++) out.push([await shoot(() => stripes(vertical, k, bits, false), lag), await shoot(() => stripes(vertical, k, bits, true), lag)]);
     return out;
   };
   const cols = await pairs(true), rows = await pairs(false);
@@ -131,7 +155,9 @@ async function calibrate() {
     mode = "idle";
     return screen();
   }
-  calib = { proj: [canvas.width, canvas.height], cam: [cw, ch], decoded, lit: litN };
+  lag.sort((a, b) => a - b);
+  const latency = lag.length >= 5 ? Math.round(lag[lag.length >> 1]) : undefined; // median: robust to a missed frame
+  calib = { proj: [canvas.width, canvas.height], cam: [cw, ch], decoded, lit: litN, latency };
   lut = fillHoles(map, cw, ch);
   const form = new FormData();
   form.set("json", JSON.stringify(calib));
@@ -148,36 +174,13 @@ async function calibrate() {
     : litN < cw * ch * 0.1 ? " ⚠ The projection fills under 10% of the webcam view: point the webcam at it (or move closer), then press C again."
     : decoded / litN < 0.6 ? " Under 60% mapped: check the webcam sees the whole beam and the room is dark, then press C again."
     : "";
-  msg = `${lockMsg}. ${saved ? "Saved. Press V to verify." : "SAVE FAILED (check the server console); calibration kept until reload."}${hint}`;
+  const lagMsg = latency ? ` Camera latency ≈ ${latency} ms (from ${lag.length} stripe switches).` : "";
+  msg = `${lockMsg}. ${saved ? "Saved. Press V to verify." : "SAVE FAILED (check the server console); calibration kept until reload."}${lagMsg}${hint}`;
   mode = "idle";
   screen();
 }
 
 /** L: flash the wall white and time until a camera frame shows it (projector + camera lag, what webcam input will feel). */
-async function latency() {
-  if (!track) return ((msg = "No camera: the latency meter needs the webcam"), screen());
-  mode = "busy";
-  await fullscreen();
-  const mean = (g: Uint8Array) => g.reduce((a, b) => a + b, 0) / g.length;
-  const white = mean(await shoot(() => fill("#fff"))), times: number[] = [];
-  for (let k = 0; k < 5; k++) {
-    const black = mean(await shoot(() => fill("#000")));
-    if (white - black < 10) break; // the camera doesn't see the projection
-    fill("#fff");
-    const t0 = performance.now();
-    while (performance.now() - t0 < 1000) {
-      await nextFrame();
-      const t = performance.now();
-      if (mean(grayFrame("lum", 160, 90)) > (black + white) / 2) { times.push(t - t0); break; } // 160×90: fast enough per frame
-    }
-  }
-  msg = times.length
-    ? `Camera latency ≈ ${Math.round(times.reduce((a, b) => a + b) / times.length)} ms over ${times.length} flashes (jump timing windows are 100 ms)`
-    : "Latency: the camera never saw the white flash. Does it see the projection?";
-  mode = "idle";
-  screen();
-}
-
 function notReady() {
   if (!calib || !lut) return "Calibrate first (C)";
   if (video.videoWidth !== calib.cam[0] || canvas.width !== calib.proj[0] || canvas.height !== calib.proj[1])
@@ -423,7 +426,6 @@ addEventListener("keydown", (e) => {
   if (k === "c") calibrate();
   else if (k === "v") fullscreen().then(verify);
   else if (k === "e") fullscreen().then(mapEdges); // before mapEdges' size check, which Esc's fullscreen exit would fail
-  else if (k === "l") latency();
   else if (mode === "edges" && (k === "+" || k === "-")) retune(k === "+" ? -2 : 2); // + = more edges (lower threshold)
   else if (k === "g") (round = 1), (seed = newSeed()), fullscreen().then(startGame);
   else if (k === "h") design();

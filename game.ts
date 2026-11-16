@@ -272,7 +272,7 @@ export function createGame(
   const particles: Particle[] = [];
   const s = {
     players, coins, enemies, bolts, particles, gem, powers, goal, mod, round,
-    freeze: 0, slow: 0, flash: 0, frames: 0, falls: 0, won: false, events: [] as GameEvent[], best: 0, secretsTotal: 0, reachable: reachable.length,
+    freeze: 0, slow: 0, flash: 0, boomX: 0, boomY: 0, frames: 0, falls: 0, won: false, events: [] as GameEvent[], best: 0, secretsTotal: 0, reachable: reachable.length,
   };
   const burst = (x: number, y: number, color: string, n: number, speed = 3) => {
     for (let i = 0; i < n && particles.length < 500; i++) {
@@ -369,7 +369,7 @@ export function createGame(
           for (const e of enemies)
             if (!e.dead && Math.hypot(e.x - p.x, e.y - p.y) < 30 * T) (e.dead = true), burst(e.x + e.w / 2, e.y + e.h / 2, "#ff9d00", 25, 5);
           bolts.length = 0;
-          s.flash = 12;
+          (s.flash = 30), (s.boomX = p.x + p.w / 2), (s.boomY = p.y + p.h / 2);
           s.events.push("stomp");
         } else p[k] = true;
         burst(pw.x, pw.y, "#ffffff", 30, 4);
@@ -488,12 +488,12 @@ export function createGame(
     hud();
 
     for (const z of hazards) {
-      ctx.strokeStyle = ctx.shadowColor = f % 20 < 10 ? "#ff1744" : "#ff8a80";
+      ctx.strokeStyle = ctx.shadowColor = "#ff1744"; // steady colour: no blinking (photosensitivity)
       ctx.shadowBlur = 12;
       ctx.lineWidth = 2;
       ctx.strokeRect(z.x, z.y, z.w, z.h);
       ctx.beginPath(); // crackle: a fresh zigzag every few frames
-      for (let k = 0, x = z.x; k <= 6; k++, x += z.w / 6) ctx.lineTo(x, z.y + z.h / 2 + (Math.sin(Math.floor(f / 4) * 7.3 + k * 2.1) * z.h) / 3);
+      for (let k = 0, x = z.x; k <= 6; k++, x += z.w / 6) ctx.lineTo(x, z.y + z.h / 2 + (Math.sin(Math.floor(f / 12) * 7.3 + k * 2.1) * z.h) / 3);
       ctx.stroke();
       ctx.shadowBlur = 0;
       ctx.fillStyle = "#ff8a80";
@@ -513,7 +513,7 @@ export function createGame(
     for (const pw of powers) {
       if (pw.taken) continue;
       ctx.fillStyle = ctx.shadowColor = "#ffffff";
-      ctx.shadowBlur = 10 + 6 * Math.sin(f / 5);
+      ctx.shadowBlur = 10 + 6 * Math.sin(f / 20);
       ctx.beginPath(); // glowing bubble around the icon
       ctx.arc(pw.x, pw.y + Math.sin(f / 12) * 2, 1.6 * T, 0, Math.PI * 2);
       ctx.globalAlpha = 0.25;
@@ -564,9 +564,12 @@ export function createGame(
     }
     ctx.globalAlpha = 1;
 
-    if (s.flash) { // bomb flash
-      ctx.fillStyle = `rgba(255,240,200,${s.flash / 20})`;
-      ctx.fillRect(0, 0, W, H);
+    if (s.flash) { // bomb: an expanding orange ring (no full-screen flash: photosensitivity)
+      ctx.strokeStyle = `rgba(255,157,0,${s.flash / 30})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(s.boomX, s.boomY, (30 - s.flash + 1) * T, 0, Math.PI * 2);
+      ctx.stroke();
     }
     if (mod === "darkness") { // everything black except a glow around each player; the exit still shines through
       ctx.fillStyle = "rgba(0,0,0,0.94)";
@@ -582,7 +585,7 @@ export function createGame(
     if (goal) {
       const open = left === 0;
       ctx.strokeStyle = ctx.shadowColor = open ? "#00ff88" : "#2e5e46";
-      ctx.shadowBlur = open ? 10 + 8 * Math.sin(f / 6) : 0;
+      ctx.shadowBlur = open ? 10 + 8 * Math.sin(f / 20) : 0;
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.roundRect(goal.x, goal.y, goal.w, goal.h, [goal.w / 2, goal.w / 2, 2, 2]); // arched door
@@ -621,8 +624,9 @@ export function createGame(
 const overlap = (a: Body, x: number, y: number, w: number, h: number) => a.x < x + w && a.x + a.w > x && a.y < y + h && a.y + a.h > y;
 
 function drawPlayer(ctx: CanvasRenderingContext2D, p: Player, f: number) {
-  if (p.inv && Math.floor(p.inv / 5) % 2) return; // blink while invulnerable
-  if (p.ghost) ctx.globalAlpha = p.ghost < 90 && Math.floor(p.ghost / 6) % 2 ? 0.2 : 0.45; // see-through; flickers when about to end
+  // invulnerable or ghost: see-through instead of blinking (photosensitivity); a ghost fades back in over its last 1.5 s
+  if (p.inv) ctx.globalAlpha = 0.45;
+  if (p.ghost) ctx.globalAlpha = p.ghost < 90 ? 0.45 + (0.4 * (90 - p.ghost)) / 90 : 0.45;
   if (p.shield) {
     ctx.strokeStyle = ctx.shadowColor = "#7fd8ff";
     ctx.shadowBlur = 10;
@@ -648,7 +652,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, p: Player, f: number) {
 
 function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, color: string, f: number) {
   if (e.kind === "spark") { // a crackling star riding the edge line
-    ctx.strokeStyle = ctx.shadowColor = f % 6 < 3 ? "#ffffff" : "#fff36b";
+    ctx.strokeStyle = ctx.shadowColor = "#fff36b";
     ctx.shadowBlur = 16;
     ctx.lineWidth = 2;
     ctx.beginPath();

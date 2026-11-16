@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { SKIP, bitsFor, decode, fillHoles, fromGray, gray, lit } from "./calibrate";
+import { SKIP, bitsFor, decode, fillHoles, fromGray, gray, lit, switchTime } from "./calibrate";
 
 test("gray code round-trips", () => {
   for (let n = 0; n < 5000; n++) expect(fromGray(gray(n))).toBe(n);
@@ -40,4 +40,14 @@ test("fillHoles spreads values into small gaps only", () => {
   map[1] = 9;
   const filled = fillHoles(map, 10, 1, 3);
   expect([filled[6], filled[7], filled[8]]).toEqual([7, 9, -1]);
+});
+
+test("switchTime: when a projected change reached the camera, or nothing for a faint change", () => {
+  const before = new Uint8Array(100).fill(20), after = new Uint8Array(100).fill(200);
+  const mix = (f: number) => before.map((v, i) => Math.round(v + (after[i] - v) * f));
+  // camera frames 33 ms apart: still old, still old, half-blended exposure, new, new
+  const seen: [number, Uint8Array][] = [[33, mix(0)], [66, mix(0)], [100, mix(0.6)], [133, mix(1)], [166, mix(1)]];
+  expect(switchTime(before, seen)).toBe(100);
+  expect(switchTime(before, [[33, before.map((v) => v + 2)]])).toBeUndefined(); // too faint to time
+  expect(switchTime(before, [])).toBeUndefined();
 });

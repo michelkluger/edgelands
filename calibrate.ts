@@ -69,3 +69,15 @@ export function fillHoles(map: Int16Array, w: number, h: number, passes = 4) {
   }
   return cur;
 }
+
+/**
+ * When did a projected change reach the camera? `before` is a small grayscale frame from just before the change, `seen` the
+ * frames sampled afterwards with their time (ms since the change). Returns the time the picture got halfway from old to new,
+ * or undefined when the change is too faint to time (a dark wall).
+ */
+export function switchTime(before: Uint8Array, seen: [number, Uint8Array][]) {
+  if (!seen.length) return undefined;
+  const diff = (g: Uint8Array) => g.reduce((a, v, i) => a + Math.abs(v - before[i]), 0) / g.length;
+  const full = diff(seen[seen.length - 1][1]);
+  return full > 4 ? seen.find(([, g]) => diff(g) >= full / 2)?.[0] : undefined;
+}
