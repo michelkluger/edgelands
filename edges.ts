@@ -22,6 +22,13 @@ export function edgeTiles(
       const i = y * camW + x;
       g[i] = (white[i - camW - 1] + white[i - camW] + white[i - camW + 1] + white[i - 1] + white[i] + white[i + 1] + white[i + camW - 1] + white[i + camW] + white[i + camW + 1]) / 9;
     }
+  // typical brightness of the lit wall (median over decoded pixels): an edge whose brighter side is under half of it lies in shadow or an unlit room, where the photo is noise
+  const hg = new Uint32Array(256);
+  let nlit = 0;
+  for (let i = 0; i < camW * camH; i++) if (map[2 * i] >= 0) hg[white[i]]++, nlit++;
+  let lit = 0;
+  for (let acc = 0; lit < 255 && (acc += hg[lit]) < nlit / 2; lit++);
+  const sg = [1, camW + 1, camW, camW - 1];
   const mag = new Float32Array(white.length), dir = new Uint8Array(white.length); // dir: 0 horizontal, 1 diag ↘, 2 vertical, 3 diag ↙
   for (let y = 2; y < camH - 2; y++)
     for (let x = 2; x < camW - 2; x++) {
@@ -31,6 +38,9 @@ export function edgeTiles(
       mag[i] = ((gx * gx + gy * gy) * 128 * 128) / Math.max(g[i], 32) ** 2; // contrast relative to local brightness (a fold changes the lighting by a ratio), in units of a mid-grey wall
       const a = ((Math.atan2(gy, gx) * 4) / Math.PI + 8.5) % 4; // gradient angle in 45° steps, 0..4
       dir[i] = Math.floor(a);
+      const o = 2 * sg[dir[i]];
+      const hi = Math.max(g[i - o], g[i + o]);
+      if (hi < lit / 2 && hi < 3 * Math.min(g[i - o], g[i + o])) mag[i] = 0; // in the dark, keep only strong ratio steps (a silhouette against an unlit void)
     }
   // thin each edge band to its ridge (non-maximum suppression along the gradient): one-tile lines instead of thick blobs
   const step = [1, camW + 1, camW, camW - 1], LO = 0.4;
