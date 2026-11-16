@@ -2,6 +2,7 @@
 //
 //   bun tools/edge_eval.ts            → per-scan table + mean SCORE (higher is better, 0..1)
 //   bun tools/edge_eval.ts --json     → machine-readable
+//   bun tools/edge_eval.ts --holdout  → score the held-out walls (tools/edge_truth_holdout/): never tune on these
 //
 // Ground truth: tools/edge_truth/<scan>.json = { segments: [[x1,y1,x2,y2], ...] } in camera px of that scan's photo.
 // Each segment is rasterised in camera space and mapped through the scan's own camera→projector table into game tiles.
@@ -14,11 +15,11 @@ import { edgeTiles } from "../edges";
 const ROOT = `${import.meta.dir}/..`;
 const TOL = 2, MARGIN = 2; // tiles; edgeTiles ignores the 2-tile frame margin (beam border), so the truth does too
 
-export async function evaluate(detect = edgeTiles) {
+export async function evaluate(detect = edgeTiles, truthDir = `${import.meta.dir}/edge_truth`) {
   const rows: { scan: string; precision: number; recall: number; hRecall: number; f1: number; detected: number; truth: number }[] = [];
-  for (const file of readdirSync(`${import.meta.dir}/edge_truth`).filter((f) => f.endsWith(".json")).sort()) {
+  for (const file of readdirSync(truthDir).filter((f) => f.endsWith(".json")).sort()) {
     const scan = file.replace(/\.json$/, ""), sdir = `${ROOT}/calibration/scans/${scan}`;
-    const segments: number[][] = (await Bun.file(`${import.meta.dir}/edge_truth/${file}`).json()).segments;
+    const segments: number[][] = (await Bun.file(`${truthDir}/${file}`).json()).segments;
     const calib = await Bun.file(`${sdir}/calibration.json`).json();
     const [cw, ch] = calib.cam, [pw, ph] = calib.proj;
     const white = new Uint8Array(await Bun.file(`${sdir}/white.gray`).arrayBuffer());
@@ -64,7 +65,7 @@ export async function evaluate(detect = edgeTiles) {
 }
 
 if (import.meta.main) {
-  const { rows, score } = await evaluate();
+  const { rows, score } = await evaluate(edgeTiles, process.argv.includes("--holdout") ? `${import.meta.dir}/edge_truth_holdout` : undefined);
   if (process.argv.includes("--json")) console.log(JSON.stringify({ score, rows }));
   else {
     const p = (x: number) => x.toFixed(3);

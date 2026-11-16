@@ -2,3 +2,8 @@
 calibration/
 node_modules/
 *.log
+
+# autoresearch working copies (the result lands in edges.ts)
+tools/autoresearch/edges.work.ts
+tools/autoresearch/edges.best.ts
+tools/autoresearch/scratch/

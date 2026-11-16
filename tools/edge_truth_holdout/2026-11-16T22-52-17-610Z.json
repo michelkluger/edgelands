@@ -1,0 +1,14 @@
+{
+  "note": "HOLDOUT (never tuned on): door corner, closed door, different calibration. Ceiling lines, corner, door-frame lintel (2 lines), frame verticals, socket. Camera px.",
+  "segments": [
+    [621, 86, 802, 142],
+    [802, 142, 890, 89],
+    [802, 142, 802, 460],
+    [802, 236, 965, 149],
+    [824, 261, 962, 189],
+    [824, 261, 824, 460],
+    [962, 149, 962, 455],
+    [974, 149, 974, 455],
+    [996, 405, 1018, 405], [996, 405, 996, 452], [1018, 405, 1018, 452]
+  ]
+}

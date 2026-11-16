@@ -2,6 +2,8 @@
   "note": "bottle wall: window frame (left), wall corner, curtain rail, bottle outline, small object on the table. Camera px.",
   "segments": [
     [343, 105, 341, 412],
+    [331, 100, 311, 385],
+    [321, 100, 300, 385],
     [460, 92, 460, 320],
     [345, 103, 416, 103],
     [452, 323, 475, 323],
