@@ -1,0 +1,9 @@
+{
+  "name": "projection-games",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot server.ts",
+    "test": "bun test"
+  }
+}
