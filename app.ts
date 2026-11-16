@@ -1,6 +1,6 @@
 // Runs fullscreen on the projector (Windows "Duplicate" display). Keys: C calibrate, V verify, E map edges, G play, L camera latency, Esc back.
 import { SKIP, bitsFor, decode, fillHoles, lit } from "./calibrate";
-import { edgeTiles, fromMap, toMap, type Level } from "./edges";
+import { beamOutside, edgeTiles, fromMap, toMap, type Level } from "./edges";
 import { createGame, seeded, type GameEvent } from "./game";
 
 type Calib = { proj: [number, number]; cam: [number, number]; decoded: number; lit: number };
@@ -202,7 +202,17 @@ async function mapEdges() {
   photo.set("png", await png(lastWhite, calib!.cam[0], calib!.cam[1]));
   photo.set("raw", new Blob([lastWhite]));
   await fetch("/photo", { method: "POST", body: photo }).catch(() => {});
+  // projector or camera moved since C? Then the camera→projector map is wrong and every edge lands in the wrong place.
+  // Good scans put 1–15% of the beam outside the calibrated area (a lit arm in front of the wall); moved ones 55–95%.
+  const outside = beamOutside(lastWhite, lut!);
+  if (outside > 0.3) {
+    lastWhite = null;
+    mode = "idle";
+    msg = `⚠ The projection moved since calibration (${Math.round(outside * 100)}% of the beam is outside the calibrated area): press C, then E`;
+    return screen();
+  }
   mode = "edges";
+  minGrad = 18; // a new scan starts at the default sensitivity, not at the last scan's +/− setting
   await retune(0);
 }
 

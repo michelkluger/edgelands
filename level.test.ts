@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { fillHoles } from "./calibrate";
-import { edgeTiles, fromMap, thin, toMap } from "./edges";
+import { beamOutside, edgeTiles, fromMap, thin, toMap } from "./edges";
 
 test("thin: a 3-wide band becomes a 1-wide line of the same length", () => {
   const cols = 20, rows = 5, g = new Uint8Array(cols * rows);
@@ -317,4 +317,13 @@ test("a jetpack can't fly over a side wall out of the world", () => {
   for (let i = 0; i < 400; i++) g.step([{ ...idle, right: true }]);
   expect(p.x + p.w).toBeLessThanOrEqual(39 * 8);
   expect(p.y + p.h).toBe(29 * 8);
+});
+
+test("beamOutside: flags a projection that moved since calibration, not a body in the beam", () => {
+  const W = 100, H = 60, map = new Int16Array(2 * W * H).fill(-1);
+  for (let y = 0; y < H; y++) for (let x = 0; x < 50; x++) map.set([x * 8, y * 8], 2 * (y * W + x)); // calibrated: left half
+  const photo = (lit: (x: number, y: number) => boolean) => Uint8Array.from({ length: W * H }, (_, i) => (lit(i % W, Math.floor(i / W)) ? 180 : 15));
+  const shadow = (x: number, y: number) => x < 50 && !(x > 20 && x < 35 && y > 20 && y < 30); // beam where calibrated, minus a body shadow
+  expect(beamOutside(photo(shadow), map)).toBeLessThan(0.05);
+  expect(beamOutside(photo((x) => x >= 30 && x < 80), map)).toBeGreaterThan(0.3); // beam shifted right: 30 of 50 columns now outside
 });

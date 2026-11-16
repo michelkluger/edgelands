@@ -151,3 +151,20 @@ export const fromMap = (tile: number, map: string[]): Level => ({
   rows: map.length,
   solid: Uint8Array.from(map.join(""), (ch) => (ch === "#" ? 1 : 0)),
 });
+
+/**
+ * Share of the beam that lands outside the calibrated area: brightly lit camera pixels (over half the lit wall's median)
+ * where the calibration found no projector, relative to the calibrated area. Near 0 normally (a lit arm in the beam adds a
+ * few %); large when the projector or camera moved since calibration, which makes every mapped edge land in the wrong place.
+ */
+export function beamOutside(white: Uint8Array, map: Int16Array) {
+  const hg = new Uint32Array(256);
+  let inside = 0;
+  for (let i = 0; i < white.length; i++) if (map[2 * i] >= 0) hg[white[i]]++, inside++;
+  if (!inside) return 1;
+  let lit = 0;
+  for (let acc = 0; lit < 255 && (acc += hg[lit]) < inside / 2; lit++);
+  let out = 0;
+  for (let i = 0; i < white.length; i++) if (map[2 * i] < 0 && white[i] > lit / 2) out++;
+  return out / inside;
+}
