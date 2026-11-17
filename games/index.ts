@@ -5,6 +5,8 @@ import { marble } from "./marble";
 import { pinball } from "./pinball";
 import { pong } from "./pong";
 import type { GameDef } from "../wall";
+import { bridge } from "./bridge";
+import { seek } from "./seek";
 
 const shadowCatch: GameDef = {
   id: "catch",
@@ -27,4 +29,6 @@ export const GAMES: GameDef[] = [
   shadowCatch,
   marble,
   pong,
+  bridge,
+  seek,
 ];
