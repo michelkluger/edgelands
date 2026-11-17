@@ -5,11 +5,12 @@ import { marble } from "./marble";
 import { pinball } from "./pinball";
 import { pong } from "./pong";
 import type { GameDef } from "../wall";
-import { bridge } from "./bridge";
-import { seek } from "./seek";
-import { garden } from "./garden";
-import { paint } from "./paint";
-import { pose } from "./pose";
+  breakout,
+  cycles,
+  pinball,
+  artillery,
+  golf,
+  grapple,
 
 const shadowCatch: GameDef = {
   id: "catch",
@@ -27,7 +28,11 @@ const shadowCatch: GameDef = {
 export const GAMES: GameDef[] = [
   // keyboard
   breakout,
+  cycles,
   pinball,
+  artillery,
+  golf,
+  grapple,
   // shadow
   shadowCatch,
   marble,
