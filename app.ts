@@ -547,5 +547,7 @@ try {
     OverconstrainedError: "The webcam refused the requested resolution",
   };
   msg = `${why[(e as Error).name] ?? `No camera (${e})`} · Edge Runner works without it`;
+  // the camera is only requested at load: once it's allowed in the address bar, reload by ourselves
+  navigator.permissions?.query({ name: "camera" as PermissionName }).then((p) => (p.onchange = () => p.state === "granted" && location.reload()), () => {});
 }
 if (mode === "idle") screen();
