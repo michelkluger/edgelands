@@ -28,21 +28,22 @@ const shadowCatch: GameDef = {
   },
 };
 
+// Menu shortcuts: one letter each. Taken elsewhere: C V E H (setup), G (Edge Runner), R M (restart, mute in games).
 export const GAMES: GameDef[] = [
   // keyboard
-  breakout,
-  cycles,
-  pinball,
-  artillery,
-  golf,
-  grapple,
+  { ...breakout, key: "B" },
+  { ...cycles, key: "L" },
+  { ...pinball, key: "P" },
+  { ...artillery, key: "A" },
+  { ...golf, key: "T" },
+  { ...grapple, key: "W" },
   // shadow
-  shadowCatch,
-  marble,
-  pong,
-  bridge,
-  seek,
-  paint,
-  garden,
-  pose,
+  { ...shadowCatch, key: "S" },
+  { ...marble, key: "U" },
+  { ...pong, key: "O" },
+  { ...bridge, key: "I" },
+  { ...seek, key: "K" },
+  { ...paint, key: "N" },
+  { ...garden, key: "D" },
+  { ...pose, key: "X" },
 ];

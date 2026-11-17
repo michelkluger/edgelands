@@ -22,6 +22,7 @@ export type WallGame = {
 };
 export type GameDef = {
   id: string;
+  key?: string; // menu shortcut letter (set in games/index.ts)
   title: string;
   sub: string; // one line: what you do
   hint: string; // one line: the keys

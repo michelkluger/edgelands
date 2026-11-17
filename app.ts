@@ -1,4 +1,4 @@
-// Runs fullscreen on the projector (Windows "Duplicate" display). Menu: arrows + Enter, or the letters C calibrate, V verify, E map edges, G Edge Runner, S Shadow Catch, H Haiku level; Esc back.
+// Runs fullscreen on the projector (Windows "Duplicate" display). Menu: arrows + Enter, or a letter: each game has one (games/index.ts), C calibrate, V verify, E map edges, H Haiku level, G Edge Runner; Esc back.
 import { SKIP, bitsFor, decode, fillHoles, lit, switchTime } from "./calibrate";
 import { beamOutside, edgeTiles, fromMap, toMap, type Level } from "./edges";
 import { BACKDROP } from "./catch";
@@ -40,7 +40,7 @@ function menuItems(): MenuItem[] {
   const cal = !calib || !lut ? "Calibrate first (C)" : "", cam = track ? "" : "Needs the webcam", edges = level ? "" : "Map the edges first (E)";
   const games = GAMES.map((d): MenuItem => {
     const best = Number(store(`best:${d.id}`)) || 0;
-    return { id: d.id, key: d.id === "catch" ? "S" : undefined, title: d.title, sub: d.sub + (best ? ` · best ${best}` : ""), hint: d.hint, blocked: d.input === "shadow" ? cam || cal : edges, kind: d.input };
+    return { id: d.id, key: d.key, title: d.title, sub: d.sub + (best ? ` · best ${best}` : ""), hint: d.hint, blocked: d.input === "shadow" ? cam || cal : edges, kind: d.input };
   });
   return [
     { id: "runner", key: "G", kind: "keys", title: "Edge Runner", sub: "Jump along your room's real edges · 1–2 players", blocked: edges, hint: "←→ move · Space jump · ↓ drop · 2 two players · M mute · R retry" },
@@ -551,7 +551,7 @@ function run(k: string) {
   else if (mode === "edges" && (k === "+" || k === "-")) retune(k === "+" ? -2 : 2); // + = more edges (lower threshold)
   else if (k === "g") (round = 1), (seed = newSeed()), fullscreen().then(startGame);
   else if (k === "h") design();
-  else if (k === "s" && mode !== "game") fullscreen().then(() => startWall(GAMES.find((d) => d.id === "catch")!, true));
+  else if (GAMES.some((d) => d.key?.toLowerCase() === k)) fullscreen().then(() => startWall(GAMES.find((d) => d.key?.toLowerCase() === k)!, true));
   else if (k === "escape") (mode = "idle"), (msg = ""), screen();
 }
 
