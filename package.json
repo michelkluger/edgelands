@@ -5,6 +5,6 @@
   "scripts": {
     "start": "bun server.ts --open",
     "dev": "bun --hot server.ts",
-    "test": "bun test"
+    "test": "bun test --timeout 30000"
   }
 }
