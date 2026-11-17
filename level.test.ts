@@ -328,9 +328,13 @@ test("beamOutside: flags a projection that moved since calibration, not a body i
   expect(beamOutside(photo((x) => x >= 30 && x < 80), map)).toBeGreaterThan(0.3); // beam shifted right: 30 of 50 columns now outside
 });
 
-test("menu arrows: left/right stay in a row, up/down jump between the game cards and the setup row", () => {
-  const { moveSel } = require("./menu");
-  expect([moveSel(0, "ArrowRight", 6), moveSel(1, "ArrowRight", 6), moveSel(2, "ArrowLeft", 6)]).toEqual([1, 1, 2]);
-  expect([moveSel(0, "ArrowDown", 6), moveSel(1, "ArrowDown", 6), moveSel(5, "ArrowUp", 6), moveSel(3, "ArrowUp", 6)]).toEqual([2, 5, 1, 0]);
-  expect([moveSel(0, "ArrowUp", 6), moveSel(4, "ArrowDown", 6)]).toEqual([0, 4]);
+test("menu arrows: left/right stay in a row, up/down go to the nearest tile in the next row", () => {
+  const { menuLayout, moveSel } = require("./menu");
+  const g = (id: string) => ({ id, title: id, sub: "", blocked: "", kind: "keys" }), st = (id: string) => ({ ...g(id), kind: "setup" });
+  const items = [...["a", "b", "c", "d", "e", "f", "g"].map(g), ...["C", "V", "E", "H"].map(st)]; // 5 + 2 games, 4 setup
+  const r = menuLayout(items), mv = (i: number, k: string) => moveSel(i, k, r);
+  expect([mv(0, "ArrowRight"), mv(4, "ArrowRight"), mv(5, "ArrowLeft"), mv(0, "ArrowLeft")]).toEqual([1, 4, 5, 0]);
+  expect([mv(0, "ArrowDown"), mv(4, "ArrowDown"), mv(5, "ArrowUp")]).toEqual([5, 6, 0]);
+  expect(mv(6, "ArrowDown")).toBeGreaterThanOrEqual(7); // into the setup row
+  expect(mv(10, "ArrowDown")).toBe(10);
 });

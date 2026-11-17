@@ -1,7 +1,9 @@
 import { mkdir } from "node:fs/promises";
 import index from "./index.html";
 
-const dir = `${import.meta.dir}/calibration`;
+// PORT and DATA_DIR let a second copy (a git worktree) run beside the real one and read its calibration
+const port = Number(process.env.PORT) || 3210;
+const dir = process.env.DATA_DIR || `${import.meta.dir}/calibration`;
 let designing = false; // one Haiku design run at a time
 const maxBody = 16 << 20; // calibration is ~5 MB at 720p; a 1080p webcam roughly doubles it
 
@@ -10,7 +12,7 @@ const maxBody = 16 << 20; // calibration is ~5 MB at 720p; a 1080p webcam roughl
 function forbidden(req: Request) {
   const h = req.headers, host = h.get("host"), site = h.get("sec-fetch-site"), origin = h.get("origin");
   const sameOrigin = site ? site === "same-origin" : !origin || origin === `http://${host}`;
-  if (host !== "localhost:3210" && host !== "127.0.0.1:3210") return new Response("bad host", { status: 403 });
+  if (host !== `localhost:${port}` && host !== `127.0.0.1:${port}`) return new Response("bad host", { status: 403 });
   if (!sameOrigin) return new Response("cross-site", { status: 403 });
   if (Number(h.get("content-length")) > maxBody) return new Response("too large", { status: 413 });
   return null;
@@ -44,7 +46,7 @@ function firstObject(s: string) {
 }
 
 // `bun start` (--open): open the browser too; if the games are already running, just open it again.
-const url = "http://localhost:3210";
+const url = `http://localhost:${port}`;
 const open = () =>
   Bun.spawn(process.platform === "win32" ? ["cmd", "/c", "start", "", url] : [process.platform === "darwin" ? "open" : "xdg-open", url]);
 if (process.argv.includes("--open") && (await fetch(url).then(() => true, () => false))) {
@@ -55,7 +57,7 @@ if (process.argv.includes("--open") && (await fetch(url).then(() => true, () => 
 
 Bun.serve({
   hostname: "127.0.0.1", // camera page: keep it off the LAN
-  port: 3210,
+  port,
   development: true,
   idleTimeout: 255, // seconds (Bun's max): POST /design waits for Haiku, about a minute
   maxRequestBodySize: maxBody, // also covers chunked bodies, which forbidden() can't size

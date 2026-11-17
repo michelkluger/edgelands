@@ -1,10 +1,12 @@
 // Runs fullscreen on the projector (Windows "Duplicate" display). Menu: arrows + Enter, or the letters C calibrate, V verify, E map edges, G Edge Runner, S Shadow Catch, H Haiku level; Esc back.
 import { SKIP, bitsFor, decode, fillHoles, lit, switchTime } from "./calibrate";
 import { beamOutside, edgeTiles, fromMap, toMap, type Level } from "./edges";
-import { BACKDROP, createCatch } from "./catch";
+import { BACKDROP } from "./catch";
 import { createGame, seeded, type GameEvent } from "./game";
-import { drawMenu, moveSel, type MenuItem } from "./menu";
+import { GAMES } from "./games";
+import { drawMenu, menuLayout, moveSel, type MenuItem } from "./menu";
 import { shadowMask } from "./shadow";
+import { fakeMask, type GameDef, type WallGame } from "./wall";
 
 type Calib = { proj: [number, number]; cam: [number, number]; decoded: number; lit: number; latency?: number }; // latency: ms, projector → camera
 
@@ -18,7 +20,7 @@ let calib: Calib | null = null;
 let lut: Int16Array | null = null; // hole-filled camera→projector lookup, 2 values per camera pixel
 let level: Level | null = null;
 let game: ReturnType<typeof createGame> | null = null;
-let mode: "idle" | "busy" | "verify" | "edges" | "game" | "catch" = "idle";
+let mode: "idle" | "busy" | "verify" | "edges" | "game" | "wall" = "idle";
 let msg = "";
 let track: MediaStreamTrack;
 
@@ -35,15 +37,19 @@ function resize() {
 
 let sel = 0; // highlighted menu item
 function menuItems(): MenuItem[] {
-  const cal = !calib || !lut ? "Calibrate first (C)" : "", cam = track ? "" : "Needs the webcam";
-  const best = Number(store("catch-best")) || 0;
+  const cal = !calib || !lut ? "Calibrate first (C)" : "", cam = track ? "" : "Needs the webcam", edges = level ? "" : "Map the edges first (E)";
+  const games = GAMES.map((d): MenuItem => {
+    const best = Number(store(`best:${d.id}`)) || 0;
+    return { id: d.id, key: d.id === "catch" ? "S" : undefined, title: d.title, sub: d.sub + (best ? ` · best ${best}` : ""), hint: d.hint, blocked: d.input === "shadow" ? cam || cal : edges, kind: d.input };
+  });
   return [
-    { key: "G", game: "runner", title: "Edge Runner", sub: "Jump along your room's real edges · 1–2 players", blocked: level ? "" : "Map the edges first (E)", hint: "←→ move · Space jump · ↓ drop · 2 two players · M mute · R retry" },
-    { key: "S", game: "catch", title: "Shadow Catch", sub: `Catch falling stars with your shadow · 60 s${best ? ` · best ${best}` : ""}`, blocked: cam || cal, hint: "Step out of the light for the 3 s countdown · R again · M mute" },
-    { key: "C", title: "Calibrate", sub: "Room light off · about 40 s", blocked: cam },
-    { key: "V", title: "Verify", sub: "Live edges on the wall", blocked: cam || cal },
-    { key: "E", title: "Map edges", sub: "Scan the wall into a level", blocked: cam || cal },
-    { key: "H", title: "Haiku level", sub: "AI designs for this wall", blocked: level ? "" : "Map the edges first (E)" },
+    { id: "runner", key: "G", kind: "keys", title: "Edge Runner", sub: "Jump along your room's real edges · 1–2 players", blocked: edges, hint: "←→ move · Space jump · ↓ drop · 2 two players · M mute · R retry" },
+    ...games.filter((g) => g.kind === "keys"),
+    ...games.filter((g) => g.kind === "shadow"),
+    { id: "c", key: "C", kind: "setup", title: "Calibrate", sub: "Map projector to camera with stripes. Room light off, about 40 s", blocked: cam },
+    { id: "v", key: "V", kind: "setup", title: "Verify", sub: "Live camera edges drawn back onto the wall: they should sit on the real ones", blocked: cam || cal },
+    { id: "e", key: "E", kind: "setup", title: "Map edges", sub: "Scan the wall's edges into the level every game plays on", blocked: cam || cal },
+    { id: "h", key: "H", kind: "setup", title: "Haiku level", sub: "Claude Haiku designs an Edge Runner level for this wall (about a minute)", blocked: edges },
   ];
 }
 
@@ -381,17 +387,21 @@ function sfx(ev: GameEvent) {
   osc.stop(t + dur + 0.02);
 }
 
-// ---- Shadow Catch: the live shadow is the controller ----
+// ---- Wall games (games/index.ts): one runner for keyboard and shadow games ----
 const SW = 640, SH = 360; // camera frames for shadow input are downscaled: plenty for 8 px tiles, cheap per frame
-let catchGame: ReturnType<typeof createCatch> | null = null, shadowRef: Uint8Array | null = null, mask: Uint8Array | null = null;
-let freshFrame = false;
+let wallDef: GameDef | null = null, wallGame: WallGame | null = null, grid: [number, number, number] = [0, 0, 8], bestSaved = false;
+let shadowRef: Uint8Array | null = null, mask: Uint8Array | null = null, freshFrame = false, demo = false;
+const pressed = new Set<string>();
 
-/** S: photograph the empty lit wall (fresh = you step out of the light first), then play. R replays with the same photo. */
-async function startCatch(fresh: boolean) {
-  if (!track) return ((msg = "No camera: Shadow Catch needs the webcam"), screen());
-  if (notReady()) return ((msg = notReady()), screen());
+/** Shadow games photograph the empty lit wall first (fresh = you step out of the light; R reuses the photo). */
+async function startWall(def: GameDef, fresh: boolean) {
+  demo = location.hash.startsWith("#game="); // test hook: no camera, a fake swaying shadow instead
+  if (def.input === "shadow" && !demo) {
+    if (!track) return ((msg = `No camera: ${def.title} needs the webcam`), screen());
+    if (notReady()) return ((msg = notReady()), screen());
+  } else if (def.input === "keys" && !level) return ((msg = "Map the edges first (E)"), screen());
   cancelAnimationFrame(raf);
-  if (fresh || !shadowRef) {
+  if (def.input === "shadow" && !demo && (fresh || !shadowRef)) {
     mode = "busy";
     for (let n = 3; n > 0; n--) { // steady backdrop + a countdown: no flashing
       fill(BACKDROP);
@@ -413,36 +423,58 @@ async function startCatch(fresh: boolean) {
     }
     shadowRef = Uint8Array.from(sum, (v) => v / 6);
   }
-  const T = 8, cols = Math.ceil(calib!.proj[0] / T), rows = Math.ceil(calib!.proj[1] / T);
-  catchGame = createCatch(cols, rows, T, level, Math.random);
-  catchGame.state.best = Number(store("catch-best")) || 0;
+  // shadow games use the calibrated projector grid (the mask's), keyboard games the edge map's
+  const T = level?.tile ?? 8;
+  const [pw, ph] = def.input === "shadow" && calib ? calib.proj : level ? [level.cols * T, level.rows * T] : [canvas.width, canvas.height];
+  const cols = Math.ceil(pw / T), rows = Math.ceil(ph / T);
+  grid = [cols, rows, T];
+  wallDef = def;
+  const lv = level && level.cols === cols && level.rows === rows ? level : null;
+  wallGame = def.create({ cols, rows, T, level: lv, rand: seeded(newSeed()), best: Number(store(`best:${def.id}`)) || 0 });
   mask = null;
-  mode = "catch";
+  bestSaved = false;
+  mode = "wall";
   last = acc = 0;
-  const watch = () => ((freshFrame = true), mode === "catch" && video.requestVideoFrameCallback(watch));
-  video.requestVideoFrameCallback(watch);
-  raf = requestAnimationFrame(catchFrame);
+  held.clear();
+  pressed.clear();
+  if (def.input === "shadow" && !demo) {
+    const watch = () => ((freshFrame = true), mode === "wall" && video.requestVideoFrameCallback(watch));
+    video.requestVideoFrameCallback(watch);
+  }
+  raf = requestAnimationFrame(wallFrame);
 }
 
-function catchFrame(now: number) {
-  if (mode !== "catch" || !catchGame || !shadowRef || !lut || !calib) return;
-  if (freshFrame) { // one shadow mask per camera frame, not per display frame
-    freshFrame = false;
-    const T = 8, cols = Math.ceil(calib.proj[0] / T), rows = Math.ceil(calib.proj[1] / T);
-    mask = shadowMask(grayFrame("lum", SW, SH), shadowRef, lut, calib.cam[0], calib.cam[0] / SW, cols, rows, T);
+function wallFrame(now: number) {
+  if (mode !== "wall" || !wallGame || !wallDef) return;
+  const [cols, rows, T] = grid;
+  if (wallDef.input === "shadow") {
+    if (demo) mask = fakeMask(cols, rows, now / (1000 / 60));
+    else if (freshFrame && shadowRef && lut && calib) { // one shadow mask per camera frame, not per display frame
+      freshFrame = false;
+      mask = shadowMask(grayFrame("lum", SW, SH), shadowRef, lut, calib.cam[0], calib.cam[0] / SW, cols, rows, T);
+    }
   }
   acc = Math.min(acc + (last ? now - last : 0), 100);
   last = now;
   for (; acc >= 1000 / 60; acc -= 1000 / 60) {
-    catchGame.step(mask);
-    for (const ev of catchGame.state.events) sfx(ev);
-    if (catchGame.state.events.includes("win") && catchGame.state.score > catchGame.state.best)
-      store("catch-best", String((catchGame.state.best = catchGame.state.score)));
+    wallGame.step({ held, pressed, mask });
+    pressed.clear();
+    for (const ev of wallGame.state.events) sfx(ev);
+    const st = wallGame.state;
+    if (st.over && !bestSaved) { // a finished round: keep the best score
+      bestSaved = true;
+      const best = Number(store(`best:${wallDef.id}`)) || 0;
+      if (st.score > 0 && (!best || (wallDef.lowerIsBetter ? st.score < best : st.score > best))) store(`best:${wallDef.id}`, String(st.score));
+    }
   }
-  ctx.setTransform(canvas.width / calib.proj[0], 0, 0, canvas.height / calib.proj[1], 0, 0);
-  catchGame.draw(ctx, mask);
+  ctx.setTransform(canvas.width / (cols * T), 0, 0, canvas.height / (rows * T), 0, 0);
+  wallGame.draw(ctx, mask);
+  if (demo && mask) { // the fake player's shadow, as the real one would look on the wall
+    ctx.fillStyle = "rgba(20,22,30,0.75)";
+    for (let t = 0; t < mask.length; t++) if (mask[t]) ctx.fillRect((t % cols) * T, Math.floor(t / cols) * T, T, T);
+  }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  raf = requestAnimationFrame(catchFrame);
+  raf = requestAnimationFrame(wallFrame);
 }
 
 let wall: ImageData, base: Uint8ClampedArray;
@@ -488,10 +520,11 @@ addEventListener("keyup", (e) => held.delete(e.code));
 addEventListener("keydown", (e) => {
   audio ??= new AudioContext();
   if (mode === "busy") return;
-  if (mode === "catch") {
-    if (e.code === "KeyR") return void startCatch(false);
+  if (mode === "wall") { // R and M are reserved: games never use them
+    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
+    if (e.code === "KeyR") return void startWall(wallDef!, false);
     if (e.code === "KeyM") return void store("muted", (muted = !muted) ? "1" : "0");
-    if (e.code !== "Escape") return;
+    if (e.code !== "Escape") return void (e.repeat || pressed.add(e.code), held.add(e.code));
   }
   if (mode === "game") {
     if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
@@ -502,11 +535,11 @@ addEventListener("keydown", (e) => {
     if (e.code === "Digit2") return void ((players = players === 1 ? 2 : 1), (round = 1), (seed = newSeed()), startGame());
     if (e.code !== "Escape") return void held.add(e.code);
   }
-  if (mode === "idle" && e.key.startsWith("Arrow")) return void ((sel = moveSel(sel, e.key, menuItems().length)), screen());
+  if (mode === "idle" && e.key.startsWith("Arrow")) return void ((sel = moveSel(sel, e.key, menuLayout(menuItems()))), screen());
   if (mode === "idle" && e.key === "Enter") {
-    const it = menuItems()[sel];
+    const it = menuItems()[sel], def = GAMES.find((d) => d.id === it.id);
     if (it.blocked) return void ((msg = it.blocked), screen());
-    return void run(it.key.toLowerCase());
+    return void (def ? fullscreen().then(() => startWall(def, true)) : run(it.key!.toLowerCase()));
   }
   run(e.key.toLowerCase());
 });
@@ -518,7 +551,7 @@ function run(k: string) {
   else if (mode === "edges" && (k === "+" || k === "-")) retune(k === "+" ? -2 : 2); // + = more edges (lower threshold)
   else if (k === "g") (round = 1), (seed = newSeed()), fullscreen().then(startGame);
   else if (k === "h") design();
-  else if (k === "s" && mode !== "game") fullscreen().then(() => startCatch(true));
+  else if (k === "s" && mode !== "game") fullscreen().then(() => startWall(GAMES.find((d) => d.id === "catch")!, true));
   else if (k === "escape") (mode = "idle"), (msg = ""), screen();
 }
 
@@ -532,6 +565,8 @@ if (calib?.lit) {
 const saved = await fetch("/level").then((r) => (r.ok ? r.json() : null), () => null);
 if (saved) level = fromMap(saved.tile, saved.map);
 screen();
+const hashGame = GAMES.find((d) => location.hash === `#game=${d.id}`); // #game=<id>: straight into a wall game (tests, screenshots)
+if (hashGame) startWall(hashGame, true);
 if (location.hash.startsWith("#play")) (round = Number(location.hash.split("=")[1]) || 1), startGame(); // #play or #play=3: straight into a round (also for headless screenshots)
 try {
   const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 } } });
