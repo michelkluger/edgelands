@@ -521,7 +521,7 @@ addEventListener("keydown", (e) => {
   audio ??= new AudioContext();
   if (mode === "busy") return;
   if (mode === "wall") { // R and M are reserved: games never use them
-    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
+    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab", "Backspace", "Enter"].includes(e.code)) e.preventDefault();
     if (e.code === "KeyR") return void startWall(wallDef!, false);
     if (e.code === "KeyM") return void store("muted", (muted = !muted) ? "1" : "0");
     if (e.code !== "Escape") return void (e.repeat || pressed.add(e.code), held.add(e.code));
