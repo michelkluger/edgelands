@@ -7,3 +7,4 @@ node_modules/
 tools/autoresearch/edges.work.ts
 tools/autoresearch/edges.best.ts
 tools/autoresearch/scratch/
+.claude/
