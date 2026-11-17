@@ -48,6 +48,12 @@ export function slide(b: Body, T: number, wall: (c: number, r: number) => boolea
 
 export const keys = (set: Set<string>, ...codes: string[]) => codes.some((c) => set.has(c));
 
+/** Distance from point p to the segment a→b: a fast shot moves more than a target's width per frame. */
+export const segDist = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
+  const dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(ax + t * dx - px, ay + t * dy - py);
+};
+
 /** The room's edges as neon lines, painted once into a layer; call dirty() after the tiles change. */
 export function edgeLayer(g: Grid, color: string) {
   let layer: OffscreenCanvas | null = null;

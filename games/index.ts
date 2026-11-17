@@ -1,12 +1,11 @@
 // Every wall game on the menu. Add one line per game (keyboard games before shadow games); app.ts does the rest.
 import { createCatch } from "../catch";
 import type { GameDef } from "../wall";
-import { artillery } from "./artillery";
 import { breakout } from "./breakout";
 import { bridge } from "./bridge";
+import { clash } from "./clash";
 import { cycles } from "./cycles";
 import { garden } from "./garden";
-import { grapple } from "./grapple";
 import { marble } from "./marble";
 import { paint } from "./paint";
 import { pinball } from "./pinball";
@@ -33,8 +32,7 @@ export const GAMES: GameDef[] = [
   { ...breakout, key: "B" },
   { ...cycles, key: "L" },
   { ...pinball, key: "P" },
-  { ...artillery, key: "A" },
-  { ...grapple, key: "W" },
+  { ...clash, key: "W" },
   // shadow
   { ...shadowCatch, key: "S" },
   { ...marble, key: "U" },
