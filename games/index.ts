@@ -7,6 +7,9 @@ import { pong } from "./pong";
 import type { GameDef } from "../wall";
 import { bridge } from "./bridge";
 import { seek } from "./seek";
+import { garden } from "./garden";
+import { paint } from "./paint";
+import { pose } from "./pose";
 
 const shadowCatch: GameDef = {
   id: "catch",
@@ -31,4 +34,7 @@ export const GAMES: GameDef[] = [
   pong,
   bridge,
   seek,
+  paint,
+  garden,
+  pose,
 ];
