@@ -540,6 +540,12 @@ try {
   track = stream.getVideoTracks()[0];
   msg = ""; // the camera chip on the menu says it
 } catch (e) {
-  msg = `No camera (${e}): playing works, C/V/E need the camera`;
+  const why: Record<string, string> = {
+    NotAllowedError: "Camera blocked: click the camera icon in the address bar → Allow, then reload (Windows: also Settings → Privacy → Camera → let desktop apps use it)",
+    NotReadableError: "Camera busy: another app or tab is using it (Teams, Zoom, a second Edgelands tab or browser). Close it, then reload",
+    NotFoundError: "No webcam found: plug one in, then reload",
+    OverconstrainedError: "The webcam refused the requested resolution",
+  };
+  msg = `${why[(e as Error).name] ?? `No camera (${e})`} · Edge Runner works without it`;
 }
 if (mode === "idle") screen();
