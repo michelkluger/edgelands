@@ -327,3 +327,10 @@ test("beamOutside: flags a projection that moved since calibration, not a body i
   expect(beamOutside(photo(shadow), map)).toBeLessThan(0.05);
   expect(beamOutside(photo((x) => x >= 30 && x < 80), map)).toBeGreaterThan(0.3); // beam shifted right: 30 of 50 columns now outside
 });
+
+test("menu arrows: left/right stay in a row, up/down jump between the game cards and the setup row", () => {
+  const { moveSel } = require("./menu");
+  expect([moveSel(0, "ArrowRight", 6), moveSel(1, "ArrowRight", 6), moveSel(2, "ArrowLeft", 6)]).toEqual([1, 1, 2]);
+  expect([moveSel(0, "ArrowDown", 6), moveSel(1, "ArrowDown", 6), moveSel(5, "ArrowUp", 6), moveSel(3, "ArrowUp", 6)]).toEqual([2, 5, 1, 0]);
+  expect([moveSel(0, "ArrowUp", 6), moveSel(4, "ArrowDown", 6)]).toEqual([0, 4]);
+});

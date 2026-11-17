@@ -1,8 +1,9 @@
-// Runs fullscreen on the projector (Windows "Duplicate" display). Keys: C calibrate, V verify, E map edges, G play, H Haiku level, Esc back.
+// Runs fullscreen on the projector (Windows "Duplicate" display). Menu: arrows + Enter, or the letters C calibrate, V verify, E map edges, G Edge Runner, S Shadow Catch, H Haiku level; Esc back.
 import { SKIP, bitsFor, decode, fillHoles, lit, switchTime } from "./calibrate";
 import { beamOutside, edgeTiles, fromMap, toMap, type Level } from "./edges";
 import { BACKDROP, createCatch } from "./catch";
 import { createGame, seeded, type GameEvent } from "./game";
+import { drawMenu, moveSel, type MenuItem } from "./menu";
 import { shadowMask } from "./shadow";
 
 type Calib = { proj: [number, number]; cam: [number, number]; decoded: number; lit: number; latency?: number }; // latency: ms, projector → camera
@@ -32,22 +33,30 @@ function resize() {
   if (mode === "idle") screen();
 }
 
-function screen() {
-  fill("#222");
-  ctx.fillStyle = "#fff";
-  const size = Math.round(canvas.height / 28);
-  ctx.font = `${size}px sans-serif`;
-  const lines = [
-    "C calibrate (room light off) · V verify · E map edges · H Haiku designs the level · G play · S Shadow Catch · Esc back",
-    "In game: R restart same level · Enter next round · 2 two players · H Haiku redesign · M mute",
-    calib
-      ? `Calibrated ${calib.proj.join("×")}: ${Math.round((100 * calib.decoded) / calib.lit)}% of the lit area mapped` +
-        (calib.latency ? ` · camera latency ≈ ${calib.latency} ms` : "")
-      : "Not calibrated yet",
-    level ? `Edge map: ${level.solid.reduce((a, b) => a + b, 0)} tiles` : "No edge map yet (E)",
-    msg,
+let sel = 0; // highlighted menu item
+function menuItems(): MenuItem[] {
+  const cal = !calib || !lut ? "Calibrate first (C)" : "", cam = track ? "" : "Needs the webcam";
+  const best = Number(store("catch-best")) || 0;
+  return [
+    { key: "G", game: "runner", title: "Edge Runner", sub: "Jump along your room's real edges · 1–2 players", blocked: level ? "" : "Map the edges first (E)", hint: "←→ move · Space jump · ↓ drop · 2 two players · M mute · R retry" },
+    { key: "S", game: "catch", title: "Shadow Catch", sub: `Catch falling stars with your shadow · 60 s${best ? ` · best ${best}` : ""}`, blocked: cam || cal, hint: "Step out of the light for the 3 s countdown · R again · M mute" },
+    { key: "C", title: "Calibrate", sub: "Room light off · about 40 s", blocked: cam },
+    { key: "V", title: "Verify", sub: "Live edges on the wall", blocked: cam || cal },
+    { key: "E", title: "Map edges", sub: "Scan the wall into a level", blocked: cam || cal },
+    { key: "H", title: "Haiku level", sub: "AI designs for this wall", blocked: level ? "" : "Map the edges first (E)" },
   ];
-  lines.forEach((l, i) => ctx.fillText(l, size, size * 2 * (i + 1)));
+}
+
+function screen() {
+  const status = [
+    { ok: !!track, label: track ? `Camera ${video.videoWidth}×${video.videoHeight}` : "No camera" },
+    calib
+      ? { ok: true, label: `Calibrated · ${Math.round((100 * calib.decoded) / calib.lit)}% mapped${calib.latency ? ` · ${calib.latency} ms lag` : ""}` }
+      : { ok: false, label: "Not calibrated" },
+    level ? { ok: true, label: `Edge map · ${level.solid.reduce((a, b) => a + b, 0)} tiles` } : { ok: false, label: "No edge map" },
+  ];
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawMenu(ctx, canvas.width, canvas.height, menuItems(), sel, status, level, msg);
 }
 
 /** Freeze exposure, white balance and focus at their current auto values, or explain why not. */
@@ -493,7 +502,16 @@ addEventListener("keydown", (e) => {
     if (e.code === "Digit2") return void ((players = players === 1 ? 2 : 1), (round = 1), (seed = newSeed()), startGame());
     if (e.code !== "Escape") return void held.add(e.code);
   }
-  const k = e.key.toLowerCase();
+  if (mode === "idle" && e.key.startsWith("Arrow")) return void ((sel = moveSel(sel, e.key, menuItems().length)), screen());
+  if (mode === "idle" && e.key === "Enter") {
+    const it = menuItems()[sel];
+    if (it.blocked) return void ((msg = it.blocked), screen());
+    return void run(it.key.toLowerCase());
+  }
+  run(e.key.toLowerCase());
+});
+
+function run(k: string) {
   if (k === "c") calibrate();
   else if (k === "v") fullscreen().then(verify);
   else if (k === "e") fullscreen().then(mapEdges); // before mapEdges' size check, which Esc's fullscreen exit would fail
@@ -502,7 +520,7 @@ addEventListener("keydown", (e) => {
   else if (k === "h") design();
   else if (k === "s" && mode !== "game") fullscreen().then(() => startCatch(true));
   else if (k === "escape") (mode = "idle"), (msg = ""), screen();
-});
+}
 
 resize();
 // Saved calibration and level first: the game itself needs no camera.
@@ -520,7 +538,7 @@ try {
   video.srcObject = stream;
   await video.play();
   track = stream.getVideoTracks()[0];
-  msg = `Camera ${video.videoWidth}×${video.videoHeight} ready`;
+  msg = ""; // the camera chip on the menu says it
 } catch (e) {
   msg = `No camera (${e}): playing works, C/V/E need the camera`;
 }
