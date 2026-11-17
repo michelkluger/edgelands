@@ -1,6 +1,10 @@
 // Every wall game on the menu. Add one line per game (keyboard games before shadow games); app.ts does the rest.
 import { createCatch } from "../catch";
 import type { GameDef } from "../wall";
+import { artillery } from "./artillery";
+import { cycles } from "./cycles";
+import { golf } from "./golf";
+import { grapple } from "./grapple";
 
 const shadowCatch: GameDef = {
   id: "catch",
@@ -17,6 +21,10 @@ const shadowCatch: GameDef = {
 
 export const GAMES: GameDef[] = [
   // keyboard
+  cycles,
+  artillery,
+  golf,
+  grapple,
   // shadow
   shadowCatch,
 ];
