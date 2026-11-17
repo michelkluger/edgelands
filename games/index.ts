@@ -1,16 +1,19 @@
 // Every wall game on the menu. Add one line per game (keyboard games before shadow games); app.ts does the rest.
 import { createCatch } from "../catch";
+import type { GameDef } from "../wall";
+import { artillery } from "./artillery";
 import { breakout } from "./breakout";
+import { bridge } from "./bridge";
+import { cycles } from "./cycles";
+import { garden } from "./garden";
+import { golf } from "./golf";
+import { grapple } from "./grapple";
 import { marble } from "./marble";
+import { paint } from "./paint";
 import { pinball } from "./pinball";
 import { pong } from "./pong";
-import type { GameDef } from "../wall";
-  breakout,
-  cycles,
-  pinball,
-  artillery,
-  golf,
-  grapple,
+import { pose } from "./pose";
+import { seek } from "./seek";
 
 const shadowCatch: GameDef = {
   id: "catch",
