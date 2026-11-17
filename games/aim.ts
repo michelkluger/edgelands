@@ -1,4 +1,4 @@
-// Aim and shot, shared by Wall Artillery and Wall Golf: ←/→ (or A/D) swing the aim, ↑/↓ (W/S) set the power, Space fires.
+// Aim and shot, used by Wall Artillery: ←/→ (or A/D) swing the aim, ↑/↓ (W/S) set the power, Space fires.
 import type { Frame } from "../wall";
 import { type Body, keys, slide } from "./kit";
 

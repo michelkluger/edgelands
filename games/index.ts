@@ -6,7 +6,6 @@ import { breakout } from "./breakout";
 import { bridge } from "./bridge";
 import { cycles } from "./cycles";
 import { garden } from "./garden";
-import { golf } from "./golf";
 import { grapple } from "./grapple";
 import { marble } from "./marble";
 import { paint } from "./paint";
@@ -35,7 +34,6 @@ export const GAMES: GameDef[] = [
   { ...cycles, key: "L" },
   { ...pinball, key: "P" },
   { ...artillery, key: "A" },
-  { ...golf, key: "T" },
   { ...grapple, key: "W" },
   // shadow
   { ...shadowCatch, key: "S" },

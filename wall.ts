@@ -27,7 +27,7 @@ export type GameDef = {
   sub: string; // one line: what you do
   hint: string; // one line: the keys
   input: "keys" | "shadow"; // keys: needs the edge map · shadow: needs the camera and calibration (lit wall, see catch.ts BACKDROP)
-  lowerIsBetter?: boolean; // e.g. golf strokes
+  lowerIsBetter?: boolean; // e.g. a race time
   create(env: Env): WallGame;
 };
 
