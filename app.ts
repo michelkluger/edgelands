@@ -1,7 +1,9 @@
 // Runs fullscreen on the projector (Windows "Duplicate" display). Keys: C calibrate, V verify, E map edges, G play, H Haiku level, Esc back.
 import { SKIP, bitsFor, decode, fillHoles, lit, switchTime } from "./calibrate";
 import { beamOutside, edgeTiles, fromMap, toMap, type Level } from "./edges";
+import { BACKDROP, createCatch } from "./catch";
 import { createGame, seeded, type GameEvent } from "./game";
+import { shadowMask } from "./shadow";
 
 type Calib = { proj: [number, number]; cam: [number, number]; decoded: number; lit: number; latency?: number }; // latency: ms, projector → camera
 
@@ -15,7 +17,7 @@ let calib: Calib | null = null;
 let lut: Int16Array | null = null; // hole-filled camera→projector lookup, 2 values per camera pixel
 let level: Level | null = null;
 let game: ReturnType<typeof createGame> | null = null;
-let mode: "idle" | "busy" | "verify" | "edges" | "game" = "idle";
+let mode: "idle" | "busy" | "verify" | "edges" | "game" | "catch" = "idle";
 let msg = "";
 let track: MediaStreamTrack;
 
@@ -36,7 +38,7 @@ function screen() {
   const size = Math.round(canvas.height / 28);
   ctx.font = `${size}px sans-serif`;
   const lines = [
-    "C calibrate (room light off) · V verify · E map edges · H Haiku designs the level · G play · Esc back",
+    "C calibrate (room light off) · V verify · E map edges · H Haiku designs the level · G play · S Shadow Catch · Esc back",
     "In game: R restart same level · Enter next round · 2 two players · H Haiku redesign · M mute",
     calib
       ? `Calibrated ${calib.proj.join("×")}: ${Math.round((100 * calib.decoded) / calib.lit)}% of the lit area mapped` +
@@ -370,6 +372,70 @@ function sfx(ev: GameEvent) {
   osc.stop(t + dur + 0.02);
 }
 
+// ---- Shadow Catch: the live shadow is the controller ----
+const SW = 640, SH = 360; // camera frames for shadow input are downscaled: plenty for 8 px tiles, cheap per frame
+let catchGame: ReturnType<typeof createCatch> | null = null, shadowRef: Uint8Array | null = null, mask: Uint8Array | null = null;
+let freshFrame = false;
+
+/** S: photograph the empty lit wall (fresh = you step out of the light first), then play. R replays with the same photo. */
+async function startCatch(fresh: boolean) {
+  if (!track) return ((msg = "No camera: Shadow Catch needs the webcam"), screen());
+  if (notReady()) return ((msg = notReady()), screen());
+  cancelAnimationFrame(raf);
+  if (fresh || !shadowRef) {
+    mode = "busy";
+    for (let n = 3; n > 0; n--) { // steady backdrop + a countdown: no flashing
+      fill(BACKDROP);
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${Math.round(canvas.height / 14)}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(`Step out of the light… ${n}`, canvas.width / 2, canvas.height / 2);
+      ctx.textAlign = "start";
+      await sleep(1000);
+    }
+    fill(BACKDROP);
+    await sleep(300);
+    await lockCamera(); // the empty-wall photo and every live frame need the same exposure
+    const sum = new Uint32Array(SW * SH);
+    for (let k = 0; k < 6; k++) {
+      await nextFrame();
+      const g = grayFrame("lum", SW, SH);
+      for (let i = 0; i < sum.length; i++) sum[i] += g[i];
+    }
+    shadowRef = Uint8Array.from(sum, (v) => v / 6);
+  }
+  const T = 8, cols = Math.ceil(calib!.proj[0] / T), rows = Math.ceil(calib!.proj[1] / T);
+  catchGame = createCatch(cols, rows, T, level, Math.random);
+  catchGame.state.best = Number(store("catch-best")) || 0;
+  mask = null;
+  mode = "catch";
+  last = acc = 0;
+  const watch = () => ((freshFrame = true), mode === "catch" && video.requestVideoFrameCallback(watch));
+  video.requestVideoFrameCallback(watch);
+  raf = requestAnimationFrame(catchFrame);
+}
+
+function catchFrame(now: number) {
+  if (mode !== "catch" || !catchGame || !shadowRef || !lut || !calib) return;
+  if (freshFrame) { // one shadow mask per camera frame, not per display frame
+    freshFrame = false;
+    const T = 8, cols = Math.ceil(calib.proj[0] / T), rows = Math.ceil(calib.proj[1] / T);
+    mask = shadowMask(grayFrame("lum", SW, SH), shadowRef, lut, calib.cam[0], calib.cam[0] / SW, cols, rows, T);
+  }
+  acc = Math.min(acc + (last ? now - last : 0), 100);
+  last = now;
+  for (; acc >= 1000 / 60; acc -= 1000 / 60) {
+    catchGame.step(mask);
+    for (const ev of catchGame.state.events) sfx(ev);
+    if (catchGame.state.events.includes("win") && catchGame.state.score > catchGame.state.best)
+      store("catch-best", String((catchGame.state.best = catchGame.state.score)));
+  }
+  ctx.setTransform(canvas.width / calib.proj[0], 0, 0, canvas.height / calib.proj[1], 0, 0);
+  catchGame.draw(ctx, mask);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  raf = requestAnimationFrame(catchFrame);
+}
+
 let wall: ImageData, base: Uint8ClampedArray;
 function verify() {
   if (notReady()) return ((msg = notReady()), screen());
@@ -413,6 +479,11 @@ addEventListener("keyup", (e) => held.delete(e.code));
 addEventListener("keydown", (e) => {
   audio ??= new AudioContext();
   if (mode === "busy") return;
+  if (mode === "catch") {
+    if (e.code === "KeyR") return void startCatch(false);
+    if (e.code === "KeyM") return void store("muted", (muted = !muted) ? "1" : "0");
+    if (e.code !== "Escape") return;
+  }
   if (mode === "game") {
     if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
     if (e.code === "KeyR") return void startGame();
@@ -429,6 +500,7 @@ addEventListener("keydown", (e) => {
   else if (mode === "edges" && (k === "+" || k === "-")) retune(k === "+" ? -2 : 2); // + = more edges (lower threshold)
   else if (k === "g") (round = 1), (seed = newSeed()), fullscreen().then(startGame);
   else if (k === "h") design();
+  else if (k === "s" && mode !== "game") fullscreen().then(() => startCatch(true));
   else if (k === "escape") (mode = "idle"), (msg = ""), screen();
 });
 
