@@ -43,6 +43,16 @@ function firstObject(s: string) {
   throw new Error("no JSON object in reply");
 }
 
+// `bun start` (--open): open the browser too; if the games are already running, just open it again.
+const url = "http://localhost:3210";
+const open = () =>
+  Bun.spawn(process.platform === "win32" ? ["cmd", "/c", "start", "", url] : [process.platform === "darwin" ? "open" : "xdg-open", url]);
+if (process.argv.includes("--open") && (await fetch(url).then(() => true, () => false))) {
+  console.log(`Already running: opening ${url}`);
+  await open().exited;
+  process.exit(0);
+}
+
 Bun.serve({
   hostname: "127.0.0.1", // camera page: keep it off the LAN
   port: 3210,
@@ -170,4 +180,5 @@ Bun.serve({
   },
 });
 
-console.log("Wall mapping on http://localhost:3210");
+console.log(`Edgelands on ${url} (Ctrl+C to stop)`);
+if (process.argv.includes("--open")) open();
